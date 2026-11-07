@@ -1,0 +1,4 @@
+# Streamlit Community Cloud 用の依存パッケージ。
+# このアプリが使うPythonライブラリは streamlit だけです（pathlibは標準ライブラリ）。
+# st.iframe を使うため、1.56以上を指定しています。
+streamlit>=1.56,<2

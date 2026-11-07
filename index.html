@@ -1,0 +1,1366 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>三角関数インタラクティブ教材</title>
+    <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+    <!-- KaTeX (LaTeX数式描画ライブラリ) -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <style>
+        body { font-family: system-ui, -apple-system, sans-serif; background-color: #f1f5f9; color: #1e293b; margin: 0; padding: 16px; touch-action: manipulation; -webkit-text-size-adjust: 100%; }
+
+        /* 指で押しやすいボタン（高さ44px以上） */
+        .btn { min-height: 44px; padding: 0 18px; border-radius: 12px; font-weight: 700; font-size: 16px; border: 1px solid #cbd5e1; background: #fff; color: #334155; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+        .btn:active { background: #e2e8f0; }
+        .btn:disabled { opacity: .4; cursor: default; }
+        .btn-start { background: #2563eb; border-color: #2563eb; color: #fff; min-width: 110px; }
+        .btn-start:active { background: #1d4ed8; }
+        .btn-stop { background: #dc2626; border-color: #dc2626; color: #fff; min-width: 110px; }
+        .btn-stop:active { background: #b91c1c; }
+        .btn-ok { background: #16a34a; border-color: #16a34a; color: #fff; min-width: 130px; }
+        .btn-ok:active { background: #15803d; }
+        @keyframes glowPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(250,204,21,.95); } 50% { box-shadow: 0 0 0 9px rgba(250,204,21,0); } }
+        .btn.glow { border-color: #eab308; animation: glowPulse 1.2s infinite; }
+
+        .seg { display: inline-flex; border: 1px solid #cbd5e1; border-radius: 12px; overflow: hidden; }
+        .seg button { min-height: 44px; padding: 0 16px; font-weight: 700; font-size: 16px; background: #fff; color: #334155; border: 0; border-right: 1px solid #cbd5e1; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+        .seg button:last-child { border-right: 0; }
+        .seg button.active { background: #2563eb; color: #fff; }
+
+        .tab-btn { min-height: 48px; min-width: 96px; padding: 0 28px; border-radius: 12px; font-weight: 800; font-size: 18px; border: 1px solid #e2e8f0; background: #fff; color: #475569; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+        .tab-btn.active { background: #2563eb; border-color: #2563eb; color: #fff; }
+
+        /* スライダー：つまみを大きく */
+        input[type=range] { -webkit-appearance: none; appearance: none; height: 10px; border-radius: 9999px; background: #cbd5e1; outline: none; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 34px; height: 34px; border-radius: 50%; background: #2563eb; border: 3px solid #fff; box-shadow: 0 1px 5px rgba(0,0,0,.4); cursor: pointer; }
+        input[type=range]::-moz-range-thumb { width: 30px; height: 30px; border-radius: 50%; background: #2563eb; border: 3px solid #fff; box-shadow: 0 1px 5px rgba(0,0,0,.4); cursor: pointer; }
+
+        /* 3Dはドラッグで回転するので、ページスクロールと競合しないようにする */
+        #canvas3D { touch-action: none; cursor: grab; }
+        #canvas3D:active { cursor: grabbing; }
+
+        /* 円の周りだけ、指でなぞって回せるようにする透明な領域（2Dとクイズ） */
+        #circleTouch { position: absolute; z-index: 5; display: none; border-radius: 50%; touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+        #circleTouch:active { cursor: grabbing; }
+        /* 波のグラフの上：左右になぞって角度を動かす（たてスクロールは今まで通り） */
+        #waveTouch { position: absolute; z-index: 5; display: none; touch-action: pan-y; cursor: ew-resize; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+
+        ruby rt { font-size: 0.5em; }
+    </style>
+</head>
+<body class="max-w-7xl mx-auto pb-12">
+
+    <!-- コントロールバー（2D・3Dのときだけ表示） -->
+    <div id="controlBar" class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 mb-4 flex flex-col gap-4">
+        <!-- スライダー（3Dのときだけ表示。2Dは円や波を直接なぞって動かす） -->
+        <div id="sliderRow" class="items-center gap-4 w-full" style="display:none;">
+            <label class="font-bold text-lg whitespace-nowrap text-slate-700">かくど θ</label>
+            <input type="range" id="angleSlider" min="0" max="1440" value="45" step="1" class="w-full cursor-pointer">
+            <span id="angleText" class="font-mono font-extrabold text-2xl w-24 text-right text-blue-600">45°</span>
+        </div>
+
+        <!-- 操作ボタン -->
+        <div class="flex flex-wrap items-center gap-3">
+            <button id="playBtn" class="btn btn-start">スタート</button>
+            <button id="resetBtn" class="btn">リセット</button>
+            <div class="seg" id="speedSeg">
+                <button data-speed="1" class="active">1x</button>
+                <button data-speed="2">2x</button>
+                <button data-speed="4">4x</button>
+            </div>
+            <span class="text-sm text-slate-500 ml-2">みかた：</span>
+            <div class="seg" id="modeSeg">
+                <button data-mode="deg" class="active">かくど（°）</button>
+                <button data-mode="rad">ながさ（こどほう）</button>
+            </div>
+        </div>
+
+        <!-- ジャンプ -->
+        <div class="flex flex-wrap items-center gap-2">
+            <span class="text-sm text-slate-500 mr-1">ジャンプ：</span>
+            <div id="presets" class="flex flex-wrap gap-2"></div>
+        </div>
+
+        <!-- 読み出し（正確な値） -->
+        <div class="flex flex-wrap items-center gap-4">
+            <div class="flex flex-wrap items-stretch text-base bg-slate-50 rounded-xl border border-slate-200 shadow-inner">
+                <div class="px-5 py-3 text-center min-w-[12rem]">
+                    <div id="angLabel" class="text-sm text-slate-500">かくど</div>
+                    <span id="angMain" class="font-bold text-xl text-orange-600"></span>
+                    <div id="angSub" class="text-sm text-slate-500" style="min-height:1.6rem;"></div>
+                </div>
+                <div class="px-5 py-3 text-center border-l border-slate-200 min-w-[10rem]">
+                    <div class="text-sm text-slate-500">cos(θ)</div>
+                    <span id="cosText" class="font-bold text-blue-600"></span>
+                </div>
+                <div class="px-5 py-3 text-center border-l border-slate-200 min-w-[10rem]">
+                    <div class="text-sm text-slate-500">sin(θ)</div>
+                    <span id="sinText" class="font-bold text-red-600"></span>
+                </div>
+            </div>
+            <div id="radNote" class="text-base font-bold text-slate-600" style="display:none;">
+                はんしゅう（180°）の ながさが π ≈ 3.14 だよ
+            </div>
+        </div>
+    </div>
+
+    <!-- クイズパネル（クイズのときだけ表示） -->
+    <div id="quizPanel" class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 mb-4" style="display:none;">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-2">
+            <div id="quizStars" class="text-3xl tracking-widest"></div>
+            <div class="text-base text-slate-600">
+                <span style="color:#dc2626;font-weight:800;">━</span> あかい せん ＝ <ruby>高<rt>たか</rt></ruby>さ　
+                <span style="color:#2563eb;font-weight:800;">━</span> あおい せん ＝ よこの ながさ
+            </div>
+        </div>
+        <div id="quizQuestion" class="text-2xl font-bold text-slate-800 leading-loose mb-1"></div>
+        <div class="text-sm text-slate-500 mb-4">まるの まわりを ゆびで なぞって、オレンジの Pを まわしてね。きめたら「ここだ！」を おしてね。</div>
+        <div class="flex flex-wrap items-center gap-3">
+            <button id="quizHereBtn" class="btn btn-start" style="font-size:20px; min-height:52px; min-width:140px;">ここだ！</button>
+            <button id="quizHintBtn" class="btn" style="min-height:52px;">ヒント</button>
+            <button id="quizNextBtn" class="btn btn-ok" style="min-height:52px; display:none;">つぎへ</button>
+        </div>
+        <div id="quizMsg" class="mt-4 text-xl font-bold leading-relaxed" style="min-height:3.5rem;"></div>
+    </div>
+
+    <!-- タブ切り替え -->
+    <div class="flex flex-wrap gap-3 mb-4">
+        <button id="tab2dBtn" class="tab-btn active">2D</button>
+        <button id="tab3dBtn" class="tab-btn">3D</button>
+        <button id="tabQuizBtn" class="tab-btn">クイズ</button>
+    </div>
+
+    <!-- 描画エリア -->
+    <div id="canvasContainer" class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 relative w-full" style="height: 650px;">
+        <canvas id="canvas2D" class="absolute inset-0 w-full h-full"></canvas>
+        <canvas id="canvas3D" class="absolute inset-0 w-full h-full" style="display:none;"></canvas>
+        <canvas id="canvasQuiz" class="absolute inset-0 w-full h-full" style="display:none;"></canvas>
+        <!-- KaTeXラベル用のレイヤー（Canvasの上に重ねる） -->
+        <div id="labelLayer" class="absolute inset-0 pointer-events-none overflow-hidden"></div>
+        <!-- 円をなぞって回すための透明な領域（2Dとクイズ） -->
+        <div id="circleTouch"></div>
+        <!-- 波のグラフを左右になぞるための透明な領域（2D） -->
+        <div id="waveTouch"></div>
+    </div>
+
+<script>
+    // ===== 基本設定 =====
+    const MAX_DEG = 1440;                       // 4周
+    const COL_COS = '#2563eb';
+    const COL_SIN = '#dc2626';
+    const COL_TH  = '#ea580c';
+    const TURN_COLORS = ['#f97316', '#eab308', '#16a34a', '#9333ea'];   // 1〜4周目の弧の色
+
+    const canvas2D = document.getElementById('canvas2D');
+    const ctx2D = canvas2D.getContext('2d');
+    const canvas3D = document.getElementById('canvas3D');
+    const ctx3D = canvas3D.getContext('2d');
+    const canvasQuiz = document.getElementById('canvasQuiz');
+    const ctxQ = canvasQuiz.getContext('2d');
+
+    const slider = document.getElementById('angleSlider');
+    const angleText = document.getElementById('angleText');
+    const playBtn = document.getElementById('playBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const tab2dBtn = document.getElementById('tab2dBtn');
+    const tab3dBtn = document.getElementById('tab3dBtn');
+    const tabQuizBtn = document.getElementById('tabQuizBtn');
+    const controlBar = document.getElementById('controlBar');
+    const quizPanel = document.getElementById('quizPanel');
+    const circleTouch = document.getElementById('circleTouch');
+    const waveTouch = document.getElementById('waveTouch');
+    const sliderRow = document.getElementById('sliderRow');
+    const radNote = document.getElementById('radNote');
+    const container = document.getElementById('canvasContainer');
+
+    let mode = 'deg';        // 'deg'（かくど）または 'rad'（ながさ＝弧度法）。2D・3Dで共通
+    let deg = 45;            // 2D・3Dの角度（整数）
+    let degF = 45;           // 再生中の小数の角度
+    let speed = 1;
+    let isPlaying = false;
+    let animationId = null;
+    let lastT = 0;
+    let currentTab = '2d';
+    let W = 0, H = 0;        // 描画エリアのCSSピクセルサイズ
+
+    // クイズ用の角度
+    let qDeg = 45;
+    let qDegF = 45;
+
+    // 3Dカメラ
+    let rotX = 0.5, rotY = -0.6;
+    let isDragging = false;
+    let lastX = 0, lastY = 0;
+
+    function show(el, on, disp) { el.style.display = on ? (disp || '') : 'none'; }
+
+    // ===== 数式ユーティリティ =====
+    function gcd(a, b) { return b ? gcd(b, a % b) : a; }
+
+    // 角度(度)を「π の分数」のTeXにする（例: 450 → \frac{5\pi}{2}）
+    function radTeX(d) {
+        if (d === 0) return "0";
+        const g = gcd(Math.abs(d), 180);
+        const num = d / g, den = 180 / g;
+        const n = (num === 1) ? '' : String(num);
+        return den === 1 ? `${n}\\pi` : `\\frac{${n}\\pi}{${den}}`;
+    }
+
+    // 目盛りラベルのTeX。度数法なら「90°」、弧度法なら「π/2 ≈ 1.57」の形
+    function tickTeX(angle, viewMode, near) {
+        if (viewMode === 'deg') return `${angle}^\\circ`;
+        let tex = radTeX(angle);
+        if (viewMode === 'rad' && angle !== 0 && (angle % 360 !== 0 || near)) {
+            tex += `\\approx${(angle * Math.PI / 180).toFixed(2)}`;
+        }
+        return tex;
+    }
+
+    // 波の下に出す「いまのθ」のTeX
+    function curTeX(a, viewMode) {
+        if (viewMode === 'deg') return `\\theta=${a}^\\circ`;
+        if (viewMode === 'rad') {
+            if (a === 0) return '\\theta=0';
+            return `\\theta=${radTeX(a)}\\approx${(a * Math.PI / 180).toFixed(2)}`;
+        }
+        return `\\theta=${radTeX(a)}`;       // クイズ
+    }
+
+    // 指をはなしたとき、有名な角度（30°・45°の倍数）に近ければ吸い付かせる
+    const FAMOUS = [0, 30, 45, 60, 90, 120, 135, 150, 180, 210, 225, 240, 270, 300, 315, 330];
+    const SNAP_TOL = 3;
+    function snapDeg(a) {
+        let best = a, bd = SNAP_TOL + 0.001;
+        const base = Math.floor(a / 360) * 360;
+        for (const k of [base - 360, base, base + 360]) {
+            for (const f of FAMOUS) {
+                const t = k + f;
+                if (t < 0 || t > MAX_DEG) continue;
+                const d = Math.abs(a - t);
+                if (d < bd) { bd = d; best = t; }
+            }
+        }
+        return best;
+    }
+
+    // 有名角の厳密値（0〜330°）
+    const exactValues = {
+        0:   { cos: "1",                    sin: "0" },
+        30:  { cos: "\\frac{\\sqrt{3}}{2}",  sin: "\\frac{1}{2}" },
+        45:  { cos: "\\frac{\\sqrt{2}}{2}",  sin: "\\frac{\\sqrt{2}}{2}" },
+        60:  { cos: "\\frac{1}{2}",          sin: "\\frac{\\sqrt{3}}{2}" },
+        90:  { cos: "0",                    sin: "1" },
+        120: { cos: "-\\frac{1}{2}",         sin: "\\frac{\\sqrt{3}}{2}" },
+        135: { cos: "-\\frac{\\sqrt{2}}{2}", sin: "\\frac{\\sqrt{2}}{2}" },
+        150: { cos: "-\\frac{\\sqrt{3}}{2}", sin: "\\frac{1}{2}" },
+        180: { cos: "-1",                   sin: "0" },
+        210: { cos: "-\\frac{\\sqrt{3}}{2}", sin: "-\\frac{1}{2}" },
+        225: { cos: "-\\frac{\\sqrt{2}}{2}", sin: "-\\frac{\\sqrt{2}}{2}" },
+        240: { cos: "-\\frac{1}{2}",         sin: "-\\frac{\\sqrt{3}}{2}" },
+        270: { cos: "0",                    sin: "-1" },
+        300: { cos: "\\frac{1}{2}",          sin: "-\\frac{\\sqrt{3}}{2}" },
+        315: { cos: "\\frac{\\sqrt{2}}{2}",  sin: "-\\frac{\\sqrt{2}}{2}" },
+        330: { cos: "\\frac{\\sqrt{3}}{2}",  sin: "-\\frac{1}{2}" }
+    };
+
+    function getMathInfo(d) {
+        const normDeg = d % 360;
+        const turns = Math.floor(d / 360);
+        const rad = d * Math.PI / 180;
+        const key = (exactValues[normDeg] !== undefined) ? normDeg : null;
+
+        const piTeX = radTeX(d);
+        // 2周目以降は「2π + …」の形も添える
+        const subTeX = (turns >= 1 && normDeg !== 0) ? `=${2 * turns}\\pi+${radTeX(normDeg)}` : '';
+        const cosTeX = key !== null ? exactValues[key].cos : Math.cos(rad).toFixed(4);
+        const sinTeX = key !== null ? exactValues[key].sin : Math.sin(rad).toFixed(4);
+        return { piTeX, subTeX, cosTeX, sinTeX };
+    }
+
+    function renderTeX(el, tex) {
+        if (typeof katex !== 'undefined') katex.render(tex, el, { throwOnError: false });
+        else el.textContent = tex;
+    }
+
+    // ===== ラベル機能（Canvasの上に重ねる。KaTeX または HTML） =====
+    const labelLayer = document.getElementById('labelLayer');
+    const labelCache = {};
+
+    function beginLabels(prefix) {
+        for (const k in labelCache) if (k.startsWith(prefix)) labelCache[k]._used = false;
+    }
+    function endLabels(prefix) {
+        for (const k in labelCache) {
+            const el = labelCache[k];
+            if (k.startsWith(prefix) && !el._used) el.style.display = 'none';
+        }
+    }
+    function hideAll(prefix) {
+        for (const k in labelCache) if (k.startsWith(prefix)) labelCache[k].style.display = 'none';
+    }
+
+    // ax, ay: ラベルのどの位置を (x, y) に合わせるか（0〜1）
+    // o.html = true のときは、content をHTML（ルビなど）としてそのまま表示する
+    function placeLabel(key, content, x, y, o = {}) {
+        const { ax = 0.5, ay = 0, color = '#475569', size = 16, opacity = 1, bold = false, bg = 'rgba(248,250,252,0.85)', html = false } = o;
+        if (!html && typeof katex === 'undefined') return;   // KaTeX読み込み前は何もしない
+        let el = labelCache[key];
+        if (!el) {
+            el = document.createElement('div');
+            el.style.position = 'absolute';
+            el.style.whiteSpace = 'nowrap';
+            el.style.lineHeight = '1.3';
+            el.style.padding = '1px 4px';
+            el.style.borderRadius = '6px';
+            labelLayer.appendChild(el);
+            labelCache[key] = el;
+        }
+        if (el._tex !== content) {
+            if (html) el.innerHTML = content;
+            else katex.render(content, el, { throwOnError: false });
+            el._tex = content;
+        }
+        el.style.fontSize = size + 'px';
+        el.style.color = color;
+        el.style.fontWeight = bold ? '700' : '400';
+        el.style.background = bg || 'transparent';
+        el.style.opacity = opacity;
+        el.style.left = x + 'px';
+        el.style.top = y + 'px';
+        el.style.transform = `translate(${-ax * 100}%, ${-ay * 100}%)`;
+        el.style.display = 'block';
+        el._used = true;
+    }
+
+    // 目盛りラベルの濃さを決める：
+    //  ・2πの倍数（0, 2π, 4π, ...）は常に表示
+    //  ・それ以外（π/2, π, 3π/2, ...）は θ が近づいたときだけ表示し、離れると消える
+    //  ・常時表示のラベルは、隣の目盛りのラベルと近すぎて重なるときだけ隠す
+    function tickOpacities(pts, minGap, a) {
+        const n = pts.length;
+        const op = new Array(n).fill(0);
+        const always = (i) => (90 * i) % 360 === 0;
+        for (let i = 0; i < n; i++) {
+            if (always(i)) { op[i] = 1; continue; }
+            const dist = Math.abs(a - 90 * i);
+            op[i] = dist <= 12 ? 1 : (dist >= 30 ? 0 : (30 - dist) / 18);
+        }
+        for (let i = 0; i < n; i++) {
+            if (!always(i)) continue;
+            for (const j of [i - 1, i + 1]) {
+                if (j < 0 || j >= n) continue;
+                if (op[j] > 0.05 && Math.hypot(pts[i].x - pts[j].x, pts[i].y - pts[j].y) < minGap) op[i] = 0;
+            }
+        }
+        return op;
+    }
+
+    // ===== 共通の描画ヘルパー =====
+    function fillBg(ctx, w, h) {
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#f8fafc';
+        ctx.fillRect(0, 0, w, h);
+        ctx.strokeStyle = '#e2e8f0';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (let x = 0; x < w; x += 40) { ctx.moveTo(x, 0); ctx.lineTo(x, h); }
+        for (let y = 0; y < h; y += 40) { ctx.moveTo(0, y); ctx.lineTo(w, y); }
+        ctx.stroke();
+    }
+
+    function resizeCanvas() {
+        W = container.clientWidth;
+        H = container.clientHeight;
+        const dpr = window.devicePixelRatio || 1;
+        for (const [cv, ctx] of [[canvas2D, ctx2D], [canvas3D, ctx3D], [canvasQuiz, ctxQ]]) {
+            cv.width = W * dpr;
+            cv.height = H * dpr;
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        }
+        draw();
+    }
+
+    function drawWave2D(ctx, gx, gy, gw, gh, limit, func, color, width, dash) {
+        ctx.beginPath();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = width;
+        ctx.setLineDash(dash || []);
+        const pt = (d) => [gx + (d / MAX_DEG) * gw, gy - func(d * Math.PI / 180) * gh];
+        for (let d = 0; d <= limit; d += 2) {
+            const [x, y] = pt(d);
+            if (d === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        if (limit % 2 !== 0) { const [x, y] = pt(limit); ctx.lineTo(x, y); }
+        ctx.stroke();
+        ctx.setLineDash([]);
+    }
+
+    function drawFlag(ctx, x, y) {
+        ctx.save();
+        ctx.strokeStyle = '#7c2d12';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y - 30); ctx.stroke();
+        ctx.fillStyle = '#f97316';
+        ctx.beginPath(); ctx.moveTo(x, y - 30); ctx.lineTo(x + 20, y - 23); ctx.lineTo(x, y - 16); ctx.closePath(); ctx.fill();
+        ctx.beginPath(); ctx.arc(x, y, 4, 0, 2 * Math.PI);
+        ctx.fillStyle = '#7c2d12'; ctx.fill();
+        ctx.restore();
+    }
+
+    // ===== 単位円＋波の描画（2Dタブとクイズタブで共通） =====
+    //  viewMode: 'deg'（かくど）／'rad'（ながさ＝弧度法）／'quiz'（クイズ。答えが分かる数値は出さない）
+    let circleGeom = { cx: 0, cy: 0, r: 0 };
+    let waveGeom = { gx: 0, gy: 0, gw: 1, gh: 0 };
+
+    function drawCircleView(ctx, prefix, viewMode, a) {
+        const isQuiz = viewMode === 'quiz';
+        const isRad = viewMode === 'rad';
+        const w = W, h = H;
+        fillBg(ctx, w, h);
+
+        // レイアウト：左に単位円、右に波。波の振幅 = 円の半径（点Pから水平に結べる）
+        const cx = w * 0.22, cy = h * 0.46;
+        const r = Math.min(w * 0.20, h * 0.28);
+        const gx = w * 0.50, gw = w * 0.43, gy = cy, gh = r;
+
+        const rad = a * Math.PI / 180;            // 半径1の円では、弧の長さそのもの
+        const c = Math.cos(rad), s = Math.sin(rad);
+        const pX = cx + c * r, pY = cy - s * r;
+        const turnIdx = a === 0 ? 0 : Math.ceil(a / 360) - 1;   // 0〜3
+        const info = isQuiz ? null : getMathInfo(a);
+        const guide = isQuiz ? quiz.guide : null;
+
+        // --- 単位円 ---
+        ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, 2 * Math.PI);
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+        ctx.strokeStyle = '#cbd5e1';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // クイズ：高さの目安の水平線（円の中）
+        if (guide !== null) {
+            ctx.setLineDash([8, 6]);
+            ctx.strokeStyle = 'rgba(234, 88, 12, 0.8)';
+            ctx.lineWidth = 2;
+            const gyc = cy - guide * r;
+            const half = Math.sqrt(Math.max(0, r * r - (guide * r) * (guide * r)));
+            ctx.beginPath(); ctx.moveTo(cx - half, gyc); ctx.lineTo(cx + half, gyc); ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
+        // 軸
+        const ext = r + 9 * 3 + 18;
+        ctx.strokeStyle = '#94a3b8';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(cx - ext, cy); ctx.lineTo(cx + ext, cy);
+        ctx.moveTo(cx, cy - ext); ctx.lineTo(cx, cy + ext);
+        ctx.stroke();
+        ctx.font = "14px system-ui, sans-serif";
+        ctx.fillStyle = "#475569";
+        ctx.textAlign = 'left';
+        ctx.fillText("x", cx + ext + 6, cy + 5);
+        ctx.fillText("y", cx - 4, cy - ext - 8);
+        if (!isQuiz) {
+            ctx.font = "bold 15px system-ui, sans-serif";
+            ctx.fillStyle = "#64748b";
+            ctx.textAlign = 'center';
+            ctx.fillText("たんいえん（はんけい 1）", cx, cy - ext - 28);
+        }
+
+        // 0〜θ の弧（左回り）。2周目以降は少しずつ外側に広げた渦巻きにする
+        for (let t = 0; t <= turnIdx && a > 0; t++) {
+            const sweep = Math.min(360, a - 360 * t) * Math.PI / 180;
+            ctx.beginPath();
+            ctx.arc(cx, cy, r + 9 * t, 0, -sweep, true);
+            ctx.strokeStyle = TURN_COLORS[t];
+            ctx.lineWidth = 4;
+            ctx.lineCap = 'round';
+            ctx.stroke();
+        }
+        ctx.lineCap = 'butt';
+
+        // ながさモード：円周に「半径と同じ長さ」の目盛り（1, 2, 3, …）。πは3より少し先
+        if (isRad) {
+            ctx.strokeStyle = '#334155';
+            ctx.lineWidth = 2;
+            for (let k = 1; k <= 6; k++) {
+                const ux = Math.cos(k), uy = -Math.sin(k);
+                ctx.beginPath();
+                ctx.moveTo(cx + ux * (r - 6), cy + uy * (r - 6));
+                ctx.lineTo(cx + ux * (r + 7), cy + uy * (r + 7));
+                ctx.stroke();
+            }
+            ctx.lineWidth = 3;
+            for (const ang of [Math.PI, 2 * Math.PI]) {
+                const ux = Math.cos(ang), uy = -Math.sin(ang);
+                ctx.beginPath();
+                ctx.moveTo(cx + ux * (r - 10), cy + uy * (r - 10));
+                ctx.lineTo(cx + ux * (r + 12), cy + uy * (r + 12));
+                ctx.stroke();
+            }
+        }
+
+        // 三角形の塗りつぶし
+        ctx.fillStyle = 'rgba(59, 130, 246, 0.12)';
+        ctx.beginPath();
+        ctx.moveTo(cx, cy); ctx.lineTo(pX, cy); ctx.lineTo(pX, pY); ctx.closePath();
+        ctx.fill();
+
+        // 半径（斜辺）
+        ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(pX, pY);
+        ctx.strokeStyle = '#475569'; ctx.lineWidth = 2; ctx.stroke();
+
+        // cos成分（青）
+        ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(pX, cy);
+        ctx.strokeStyle = COL_COS; ctx.lineWidth = 4; ctx.stroke();
+
+        // sin成分（赤）
+        ctx.beginPath(); ctx.moveTo(pX, cy); ctx.lineTo(pX, pY);
+        ctx.strokeStyle = COL_SIN; ctx.lineWidth = 4; ctx.stroke();
+
+        // 原点付近の小さな角度の弧（かくどモードとクイズ）
+        if (a > 0 && !isRad) {
+            const sweepDeg = ((a - 1) % 360) + 1;
+            ctx.beginPath();
+            ctx.arc(cx, cy, 26, 0, -sweepDeg * Math.PI / 180, true);
+            ctx.strokeStyle = TURN_COLORS[turnIdx];
+            ctx.lineWidth = 2.5;
+            ctx.stroke();
+        }
+
+        // 点P（つかめると分かるように、まわりに輪を付ける）
+        ctx.beginPath(); ctx.arc(pX, pY, 20, 0, 2 * Math.PI);
+        ctx.fillStyle = 'rgba(249, 115, 22, 0.25)'; ctx.fill();
+        ctx.beginPath(); ctx.arc(pX, pY, 11, 0, 2 * Math.PI);
+        ctx.fillStyle = TURN_COLORS[turnIdx]; ctx.fill();
+        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.stroke();
+
+        // 何周目か
+        ctx.font = "bold 20px system-ui, sans-serif";
+        ctx.fillStyle = TURN_COLORS[turnIdx];
+        ctx.textAlign = 'center';
+        ctx.fillText(`${turnIdx + 1}しゅうめ`, cx, cy + ext + 34);
+        ctx.textAlign = 'left';
+
+        // --- 右側：波グラフ ---
+        const yRowU = gy + gh + 6;                           // 長さ1ずつの数字（ながさモード）
+        const yRow1 = isRad ? gy + gh + 28 : gy + gh + 10;   // 目盛りラベルの行
+        const yRow2 = isRad ? gy + gh + 74 : gy + gh + 58;   // 現在のθラベルの行
+
+        // 縦のガイド線（π/2刻み）
+        ctx.lineWidth = 1;
+        ctx.setLineDash([3, 4]);
+        for (let i = 1; i <= 16; i++) {
+            const xg = gx + (90 * i / MAX_DEG) * gw;
+            ctx.strokeStyle = (90 * i) % 180 === 0 ? 'rgba(100,116,139,0.35)' : 'rgba(148,163,184,0.28)';
+            ctx.beginPath(); ctx.moveTo(xg, gy - gh); ctx.lineTo(xg, gy + gh + 8); ctx.stroke();
+        }
+        // y = ±1 の水平ガイド
+        ctx.strokeStyle = 'rgba(148,163,184,0.45)';
+        ctx.beginPath();
+        ctx.moveTo(gx, gy - gh); ctx.lineTo(gx + gw, gy - gh);
+        ctx.moveTo(gx, gy + gh); ctx.lineTo(gx + gw, gy + gh);
+        ctx.stroke();
+        // クイズ：高さの目安（波のほう）
+        if (guide !== null) {
+            ctx.strokeStyle = 'rgba(234, 88, 12, 0.8)';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([8, 6]);
+            ctx.beginPath(); ctx.moveTo(gx, gy - guide * gh); ctx.lineTo(gx + gw, gy - guide * gh); ctx.stroke();
+        }
+        ctx.setLineDash([]);
+
+        // 軸
+        ctx.strokeStyle = '#94a3b8';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(gx, gy); ctx.lineTo(gx + gw + 16, gy);
+        ctx.moveTo(gx, gy - gh - 14); ctx.lineTo(gx, gy + gh + 14);
+        ctx.stroke();
+
+        // 目盛り線（π の倍数は少し長く）
+        ctx.strokeStyle = '#475569';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        for (let i = 1; i <= 16; i++) {
+            const xt = gx + (90 * i / MAX_DEG) * gw;
+            const len = (90 * i) % 180 === 0 ? 8 : 4;
+            ctx.moveTo(xt, gy - len); ctx.lineTo(xt, gy + len);
+        }
+        ctx.stroke();
+
+        // ながさモード：長さ 1, 2, 3, … の小さな目盛り（πが3より少し先に見える）
+        if (isRad) {
+            ctx.strokeStyle = '#64748b';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            for (let k = 1; k * 180 / Math.PI <= MAX_DEG; k++) {
+                const xk = gx + (k * 180 / Math.PI / MAX_DEG) * gw;
+                ctx.moveTo(xk, gy - 3); ctx.lineTo(xk, gy + 3);
+            }
+            ctx.stroke();
+        }
+
+        // 軸ラベル
+        ctx.font = "14px system-ui, sans-serif";
+        ctx.fillStyle = "#475569";
+        ctx.textAlign = 'right';
+        ctx.fillText("1", gx - 8, gy - gh + 5);
+        ctx.fillText("0", gx - 8, gy + 5);
+        ctx.fillText("-1", gx - 8, gy + gh + 5);
+        if (guide !== null) {
+            ctx.font = "bold 14px system-ui, sans-serif";
+            ctx.fillStyle = "#ea580c";
+            ctx.fillText(String(guide), gx - 8, gy - guide * gh + 5);
+        }
+        ctx.textAlign = 'left';
+        ctx.font = "14px system-ui, sans-serif";
+        ctx.fillStyle = "#475569";
+        ctx.fillText("θ", gx + gw + 22, gy + 5);
+
+        // 凡例（2D）
+        if (!isQuiz) {
+            ctx.font = "bold 15px system-ui, sans-serif";
+            ctx.fillStyle = COL_SIN;
+            ctx.fillText("sin θ（せん）", gx + 12, gy - gh - 24);
+            ctx.fillStyle = COL_COS;
+            ctx.fillText("cos θ（てんせん）", gx + 140, gy - gh - 24);
+        }
+
+        // 波（薄い全体像 → 現在までの部分）
+        drawWave2D(ctx, gx, gy, gw, gh, MAX_DEG, Math.sin, 'rgba(220, 38, 38, 0.22)', 2, []);
+        drawWave2D(ctx, gx, gy, gw, gh, MAX_DEG, Math.cos, 'rgba(37, 99, 235, 0.22)', 2, [4, 4]);
+        drawWave2D(ctx, gx, gy, gw, gh, a, Math.sin, COL_SIN, 4, []);
+        drawWave2D(ctx, gx, gy, gw, gh, a, Math.cos, COL_COS, 3, [4, 4]);
+
+        // 現在位置
+        const sx = gx + (a / MAX_DEG) * gw;
+        const sY = gy - s * gh;
+        const cY = gy - c * gh;
+
+        // 点Pから波へ水平の点線（半径 = 振幅なので、高さがそのまま対応する）
+        ctx.setLineDash([6, 5]);
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = 'rgba(220, 38, 38, 0.7)';
+        ctx.beginPath(); ctx.moveTo(pX, pY); ctx.lineTo(sx, sY); ctx.stroke();
+
+        // 波の点から下へ（現在の θ のラベルまで）
+        ctx.strokeStyle = 'rgba(234, 88, 12, 0.75)';
+        ctx.beginPath(); ctx.moveTo(sx, sY); ctx.lineTo(sx, yRow2 - 2); ctx.stroke();
+        ctx.setLineDash([]);
+
+        // 波上のマーカー
+        ctx.beginPath(); ctx.arc(sx, cY, 6, 0, 2 * Math.PI);
+        ctx.fillStyle = COL_COS; ctx.fill();
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+        ctx.beginPath(); ctx.arc(sx, sY, 8, 0, 2 * Math.PI);
+        ctx.fillStyle = COL_SIN; ctx.fill();
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+
+        // クイズ：見つけた場所の旗
+        if (isQuiz) {
+            for (const f of quiz.flags) {
+                const fn = f.curve === 'cos' ? Math.cos : Math.sin;
+                const fx = gx + (f.deg / MAX_DEG) * gw;
+                const fy = gy - fn(f.deg * Math.PI / 180) * gh;
+                drawFlag(ctx, fx, fy);
+            }
+        }
+
+        // --- ラベル ---
+        beginLabels(prefix);
+
+        // sinのラベルは、三角形の外側に置く（外側に収まらないときだけ内側）
+        const sideRight = (c >= 0) || (pX - 10 - 116 < 6);
+
+        // 斜辺OPの「1」：三角形と反対側に、いつも出す
+        {
+            const mx = (cx + pX) / 2, my = (cy + pY) / 2;
+            let nx = s, ny = c;                       // OPに垂直な向き
+            if (nx * c > 1e-6) { nx = -nx; ny = -ny; }
+            else if (Math.abs(nx * c) <= 1e-6) {      // 軸の上にいるとき
+                if (Math.abs(s) < 0.5) { nx = 0; ny = -1; }
+                else { nx = sideRight ? -1 : 1; ny = 0; }
+            }
+            placeLabel(prefix + 'one', '1', mx + nx * 16, my + ny * 16,
+                { ax: 0.5, ay: 0.5, html: true, color: '#0f172a', size: 18, bold: true, bg: '#ffffff' });
+        }
+
+        if (!isQuiz) {
+            // cos（軸をはさんで三角形と反対側）
+            placeLabel(prefix + 'cos', `\\cos\\theta=${info.cosTeX}`, (cx + pX) / 2, s >= 0 ? cy + 8 : cy - 8,
+                { ax: 0.5, ay: s >= 0 ? 0 : 1, color: COL_COS, size: 14, bold: true, bg: 'rgba(255,255,255,0.85)' });
+
+            // sin（縦線の外側。軸にかぶらないよう、軸から離す）
+            const sinMid = (cy + pY) / 2;
+            const sinY = s >= 0 ? Math.min(sinMid, cy - 28) : Math.max(sinMid, cy + 28);
+            placeLabel(prefix + 'sin', `\\sin\\theta=${info.sinTeX}`, pX + (sideRight ? 10 : -10), sinY,
+                { ax: sideRight ? 0 : 1, ay: 0.5, color: COL_SIN, size: 14, bold: true, bg: 'rgba(255,255,255,0.85)' });
+
+            if (isRad) {
+                // 弧の長さ：弧の先（点Pの少し先）に、外側へ
+                const ux = c, uy = -s;                // 外向き
+                const tx = -s, ty = -c;               // 進む向き（左回り）
+                let lx = pX + ux * (9 * turnIdx + 30) + tx * 28;
+                let ly = pY + uy * (9 * turnIdx + 30) + ty * 28;
+                lx = Math.max(60, Math.min(lx, gx - 70));
+                ly = Math.max(24, Math.min(ly, h - 24));
+                placeLabel(prefix + 'len', `\\theta=${rad.toFixed(2)}`, lx, ly,
+                    { ax: 0.5, ay: 0.5, color: COL_TH, size: 16, bold: true });
+
+                // 円周の目盛りの数字（半径と同じ長さを、円のふちに沿って並べたもの）
+                for (let k = 1; k <= 6; k++) {
+                    placeLabel(prefix + 'rk' + k, String(k), cx + Math.cos(k) * (r + 24), cy - Math.sin(k) * (r + 24),
+                        { ax: 0.5, ay: 0.5, html: true, color: '#334155', size: 14, bold: true, bg: 'rgba(255,255,255,0.8)' });
+                }
+                placeLabel(prefix + 'rpi', '\\pi\\approx3.14', cx - r - 16, cy,
+                    { ax: 1, ay: 0.5, color: '#334155', size: 14, bold: true, bg: 'rgba(255,255,255,0.9)' });
+                placeLabel(prefix + 'r2pi', '2\\pi', cx + r + 16, cy,
+                    { ax: 0, ay: 0.5, color: '#334155', size: 14, bold: true, bg: 'rgba(255,255,255,0.9)' });
+            } else if (a > 0) {
+                // 角度（度）：原点のまわりの弧のそば
+                const sweepDeg = ((a - 1) % 360) + 1;
+                const midRad = Math.max(sweepDeg / 2, 22) * Math.PI / 180;
+                placeLabel(prefix + 'deg', `${a}°`, cx + Math.cos(midRad) * 58, cy - Math.sin(midRad) * 58,
+                    { ax: 0.5, ay: 0.5, html: true, color: COL_TH, size: 17, bold: true, bg: 'rgba(255,255,255,0.85)' });
+            }
+        } else {
+            // クイズ：円のタイトル
+            placeLabel(prefix + 'title', 'たんいえん（<ruby>半径<rt>はんけい</rt></ruby> 1）', cx, cy - ext - 28,
+                { ax: 0.5, ay: 0.5, html: true, color: '#64748b', size: 16, bold: true, bg: false });
+
+            // 角度（度）
+            const dLab = r + 9 * turnIdx + 38;
+            let lx = cx + Math.cos(rad) * dLab;
+            let ly = cy - Math.sin(rad) * dLab;
+            lx = Math.max(60, Math.min(lx, gx - 70));
+            ly = Math.max(24, Math.min(ly, h - 24));
+            placeLabel(prefix + 'deg', `θ = ${a}°`, lx, ly,
+                { ax: 0.5, ay: 0.5, html: true, color: COL_TH, size: 17, bold: true });
+
+            // 波の凡例
+            placeLabel(prefix + 'lgsin', '<ruby>高<rt>たか</rt></ruby>さの なみ（せん）', gx + 12, gy - gh - 18,
+                { ax: 0, ay: 1, html: true, color: COL_SIN, size: 15, bold: true, bg: false });
+            placeLabel(prefix + 'lgcos', 'よこの なみ（てんせん）', gx + 190, gy - gh - 18,
+                { ax: 0, ay: 1, html: true, color: COL_COS, size: 15, bold: true, bg: false });
+        }
+
+        // 円と波をなぞる領域の位置合わせ
+        circleGeom = { cx, cy, r };
+        const zone = r + 9 * 3 + 40;
+        circleTouch.style.left = (cx - zone) + 'px';
+        circleTouch.style.top = (cy - zone) + 'px';
+        circleTouch.style.width = (zone * 2) + 'px';
+        circleTouch.style.height = (zone * 2) + 'px';
+        if (!isQuiz) {
+            waveGeom = { gx, gy, gw, gh };
+            waveTouch.style.left = (gx - 16) + 'px';
+            waveTouch.style.top = (gy - gh - 26) + 'px';
+            waveTouch.style.width = (gw + 56) + 'px';
+            waveTouch.style.height = (2 * gh + 52) + 'px';
+        }
+
+        // ながさモード：長さ 1, 2, 3, … の数字（いまの長さの近くだけ表示）
+        if (isRad) {
+            for (let k = 1; k * 180 / Math.PI <= MAX_DEG; k++) {
+                const dk = Math.abs(k - rad);
+                if (dk > 2.2) continue;
+                const xk = gx + (k * 180 / Math.PI / MAX_DEG) * gw;
+                placeLabel(prefix + 'u' + k, String(k), xk, yRowU,
+                    { ax: 0.5, ay: 0, html: true, color: '#334155', size: 13, bold: true, bg: 'transparent', opacity: dk <= 1.2 ? 1 : (2.2 - dk) });
+            }
+        }
+
+        // 目盛りラベル（π/2刻み）：近づいたときだけ表示、2πの倍数は常時
+        const pts = [];
+        for (let i = 0; i <= 16; i++) pts.push({ x: gx + (90 * i / MAX_DEG) * gw, y: yRow1 });
+        const op = tickOpacities(pts, 38, a);
+        for (let i = 0; i <= 16; i++) {
+            if (op[i] > 0.02) {
+                placeLabel(prefix + 't' + i, tickTeX(90 * i, viewMode, Math.abs(a - 90 * i) <= 12), pts[i].x, yRow1,
+                    { ax: 0.5, ay: 0, size: 15, opacity: op[i] });
+            }
+        }
+
+        // 現在の θ（波の下）
+        const lxCur = Math.max(50, Math.min(sx, w - 50));
+        placeLabel(prefix + 'cur', curTeX(a, viewMode), lxCur, yRow2, { ax: 0.5, ay: 0, color: COL_TH, size: 16, bold: true });
+
+        endLabels(prefix);
+    }
+
+    // ===== 3D描画 =====
+    function curve3D(limit, ptFn, color, width, dash) {
+        const ctx = ctx3D;
+        ctx.beginPath();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = width;
+        ctx.setLineDash(dash || []);
+        for (let d = 0; d <= limit; d += 2) {
+            const p = ptFn(d);
+            if (d === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
+        }
+        if (limit % 2 !== 0) { const p = ptFn(limit); ctx.lineTo(p.x, p.y); }
+        ctx.stroke();
+        ctx.setLineDash([]);
+    }
+
+    function draw3D() {
+        const ctx = ctx3D;
+        const w = W, h = H;
+        fillBg(ctx, w, h);
+
+        const cx = w * 0.5, cy = h * 0.5;
+        const scale = Math.min(w * 0.12, h * 0.16);
+        const TOTAL = 8 * Math.PI;   // 4周分
+
+        function project(x, y, z) {
+            const normX = (x / TOTAL) * 3.0 - 1.5;
+            const x1 = normX * Math.cos(rotY) + z * Math.sin(rotY);
+            const z1 = -normX * Math.sin(rotY) + z * Math.cos(rotY);
+            const y1 = y * Math.cos(rotX) - z1 * Math.sin(rotX);
+            const z2 = y * Math.sin(rotX) + z1 * Math.cos(rotX);
+            return {
+                x: cx + x1 * scale * 1.8 - (y1 * scale * 0.4),
+                y: cy - z2 * scale * 1.8 + (y1 * scale * 0.4)
+            };
+        }
+
+        const o = project(0, 0, 0);
+        const ex = project(TOTAL, 0, 0);
+        const ey = project(0, 1.5, 0);
+        const ez = project(0, 0, 1.5);
+
+        // 軸
+        ctx.strokeStyle = '#64748b';
+        ctx.lineWidth = 2;
+        ctx.font = "14px system-ui, sans-serif";
+        ctx.fillStyle = "#475569";
+        ctx.textAlign = 'left';
+
+        ctx.beginPath(); ctx.moveTo(o.x, o.y); ctx.lineTo(ex.x, ex.y); ctx.stroke();
+        ctx.fillText("θじく", ex.x + 8, ex.y);
+
+        ctx.beginPath(); ctx.moveTo(o.x, o.y); ctx.lineTo(ey.x, ey.y); ctx.stroke();
+        ctx.fillText("cos(θ)", ey.x - 12, ey.y - 12);
+
+        ctx.beginPath(); ctx.moveTo(o.x, o.y); ctx.lineTo(ez.x, ez.y); ctx.stroke();
+        ctx.fillText("sin(θ)", ez.x + 12, ez.y + 12);
+
+        // 操作のヒントと凡例
+        ctx.font = "14px system-ui, sans-serif";
+        ctx.fillStyle = "#64748b";
+        ctx.fillText("ゆびで なぞると、まわるよ", 16, 28);
+        ctx.font = "bold 15px system-ui, sans-serif";
+        ctx.fillStyle = COL_COS; ctx.fillText("cos θ（てんせん）", 16, 54);
+        ctx.fillStyle = COL_SIN; ctx.fillText("sin θ（せん）", 16, 76);
+
+        // 曲線（薄い全体像 → 現在までの部分）
+        const cosPt = (d) => project(d * Math.PI / 180, Math.cos(d * Math.PI / 180), 0);
+        const sinPt = (d) => project(d * Math.PI / 180, 0, Math.sin(d * Math.PI / 180));
+        curve3D(MAX_DEG, cosPt, 'rgba(37, 99, 235, 0.22)', 2, []);
+        curve3D(MAX_DEG, sinPt, 'rgba(220, 38, 38, 0.22)', 2, []);
+        curve3D(deg, cosPt, COL_COS, 5, []);
+        curve3D(deg, sinPt, COL_SIN, 5, []);
+
+        // 現在位置
+        const pa = project(deg * Math.PI / 180, 0, 0);
+        const pc = cosPt(deg);
+        const ps = sinPt(deg);
+        ctx.setLineDash([6, 5]);
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = 'rgba(37, 99, 235, 0.7)';
+        ctx.beginPath(); ctx.moveTo(pa.x, pa.y); ctx.lineTo(pc.x, pc.y); ctx.stroke();
+        ctx.strokeStyle = 'rgba(220, 38, 38, 0.7)';
+        ctx.beginPath(); ctx.moveTo(pa.x, pa.y); ctx.lineTo(ps.x, ps.y); ctx.stroke();
+        ctx.setLineDash([]);
+        for (const [p, col, rr] of [[pc, COL_COS, 6], [ps, COL_SIN, 7], [pa, COL_TH, 6]]) {
+            ctx.beginPath(); ctx.arc(p.x, p.y, rr, 0, 2 * Math.PI);
+            ctx.fillStyle = col; ctx.fill();
+            ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+        }
+
+        // 軸上の目盛り（点はCanvas、ラベルはKaTeX）
+        beginLabels('3d-');
+        const pts = [];
+        for (let i = 0; i <= 16; i++) pts.push(project(90 * i * Math.PI / 180, 0, 0));
+        const op = tickOpacities(pts, 38, deg);
+        for (let i = 0; i <= 16; i++) {
+            const tp = pts[i];
+            ctx.beginPath();
+            ctx.arc(tp.x, tp.y, (90 * i) % 180 === 0 ? 4 : 3, 0, 2 * Math.PI);
+            ctx.fillStyle = "#475569";
+            ctx.fill();
+            if (op[i] > 0.02) placeLabel('3d-t' + i, tickTeX(90 * i, mode, false), tp.x, tp.y + 10, { ax: 0.5, ay: 0, size: 15, opacity: op[i] });
+        }
+
+        // 現在の θ
+        placeLabel('3d-cur', curTeX(deg, mode), pa.x, pa.y + 56, { ax: 0.5, ay: 0, color: COL_TH, size: 16, bold: true });
+        endLabels('3d-');
+    }
+
+    function draw() {
+        if (currentTab === '2d') {
+            hideAll('3d-'); hideAll('q-');
+            drawCircleView(ctx2D, '2d-', mode, deg);
+        } else if (currentTab === '3d') {
+            hideAll('2d-'); hideAll('q-');
+            draw3D();
+        } else {
+            hideAll('2d-'); hideAll('3d-');
+            drawCircleView(ctxQ, 'q-', 'quiz', qDeg);
+        }
+    }
+
+    // ===== 値の更新（2D・3D） =====
+    function updateValues() {
+        angleText.textContent = deg + '°';
+        const info = getMathInfo(deg);
+        const len = deg * Math.PI / 180;       // 半径1の円では、弧の長さ
+        const angLabel = document.getElementById('angLabel');
+        const angMain = document.getElementById('angMain');
+        const angSub = document.getElementById('angSub');
+        if (mode === 'deg') {
+            angLabel.textContent = 'かくど';
+            angMain.textContent = deg + '°';
+            renderTeX(angSub, deg === 0 ? '=0' : `=${radTeX(deg)}\\approx${len.toFixed(2)}`);
+        } else {
+            angLabel.textContent = 'こ の ながさ（こどほう）';
+            angMain.textContent = len.toFixed(2);
+            const turns = Math.floor(deg / 360), norm = deg % 360;
+            let sub;
+            if (deg === 0) sub = '=0';
+            else if (turns >= 1 && norm !== 0) sub = `=${radTeX(deg)}=${2 * turns}\\pi+${radTeX(norm)}\\ (${deg}^\\circ)`;
+            else sub = `=${radTeX(deg)}\\ (${deg}^\\circ)`;
+            renderTeX(angSub, sub);
+        }
+        renderTeX(document.getElementById('cosText'), info.cosTeX);
+        renderTeX(document.getElementById('sinText'), info.sinTeX);
+        draw();
+    }
+
+    function setAngle(d) {
+        deg = d;
+        degF = d;
+        slider.value = d;
+        updateValues();
+    }
+
+    // 3Dのときだけ出るスライダー
+    slider.addEventListener('input', () => setAngle(parseInt(slider.value)));
+
+    // ===== タブ =====
+    function setTab(t) {
+        currentTab = t;
+        if (t === 'quiz') setPlaying(false);
+        tab2dBtn.classList.toggle('active', t === '2d');
+        tab3dBtn.classList.toggle('active', t === '3d');
+        tabQuizBtn.classList.toggle('active', t === 'quiz');
+        show(canvas2D, t === '2d');
+        show(canvas3D, t === '3d');
+        show(canvasQuiz, t === 'quiz');
+        show(circleTouch, t === '2d' || t === 'quiz', 'block');
+        show(waveTouch, t === '2d', 'block');
+        show(sliderRow, t === '3d', 'flex');
+        show(controlBar, t !== 'quiz', 'flex');
+        show(quizPanel, t === 'quiz', 'block');
+        if (t === 'quiz' && !quiz.started) { quiz.started = true; startQuestion(0); }
+        draw();
+    }
+    tab2dBtn.addEventListener('click', () => setTab('2d'));
+    tab3dBtn.addEventListener('click', () => setTab('3d'));
+    tabQuizBtn.addEventListener('click', () => setTab('quiz'));
+
+    // ===== 3Dの回転（マウス・タッチ共通：Pointer Events） =====
+    canvas3D.addEventListener('pointerdown', (e) => {
+        isDragging = true;
+        lastX = e.clientX; lastY = e.clientY;
+        canvas3D.setPointerCapture(e.pointerId);
+    });
+    canvas3D.addEventListener('pointermove', (e) => {
+        if (!isDragging) return;
+        rotY += (e.clientX - lastX) * 0.01;
+        rotX += (e.clientY - lastY) * 0.01;
+        lastX = e.clientX; lastY = e.clientY;
+        draw();
+    });
+    const endDrag = () => { isDragging = false; };
+    canvas3D.addEventListener('pointerup', endDrag);
+    canvas3D.addEventListener('pointercancel', endDrag);
+
+    // ===== スタート / ストップ / リセット / 速度 / ジャンプ =====
+    function loop(t) {
+        if (!isPlaying) return;
+        const dt = lastT ? Math.min(t - lastT, 50) : 16;
+        lastT = t;
+        degF += speed * 60 * dt / 1000;     // 1x で 毎秒60°
+        if (degF > MAX_DEG) degF -= MAX_DEG;
+        const nd = Math.floor(degF);
+        if (nd !== deg) {
+            deg = nd;
+            slider.value = deg;
+            updateValues();
+        }
+        animationId = requestAnimationFrame(loop);
+    }
+
+    function setPlaying(p) {
+        isPlaying = p;
+        playBtn.textContent = p ? 'ストップ' : 'スタート';
+        playBtn.className = 'btn ' + (p ? 'btn-stop' : 'btn-start');
+        if (p) {
+            if (deg >= MAX_DEG) setAngle(0);
+            lastT = 0;
+            animationId = requestAnimationFrame(loop);
+        } else {
+            cancelAnimationFrame(animationId);
+        }
+    }
+
+    playBtn.addEventListener('click', () => setPlaying(!isPlaying));
+    resetBtn.addEventListener('click', () => { setPlaying(false); setAngle(0); });
+
+    document.querySelectorAll('#speedSeg button').forEach((b) => {
+        b.addEventListener('click', () => {
+            speed = parseFloat(b.dataset.speed);
+            document.querySelectorAll('#speedSeg button').forEach((x) => x.classList.toggle('active', x === b));
+        });
+    });
+
+    // ジャンプ：360°までの17か所（弧度法のときは π の分数で表示）
+    const PRESETS = [0, 30, 45, 60, 90, 120, 135, 150, 180, 210, 225, 240, 270, 300, 315, 330, 360];
+    function buildPresets() {
+        const box = document.getElementById('presets');
+        box.innerHTML = '';
+        PRESETS.forEach((d) => {
+            const b = document.createElement('button');
+            b.className = 'btn';
+            b.style.padding = '0 10px';
+            b.style.minWidth = '56px';
+            if (mode === 'deg') b.textContent = d + '°';
+            else renderTeX(b, radTeX(d));
+            b.addEventListener('click', () => { setPlaying(false); setAngle(d); });
+            box.appendChild(b);
+        });
+    }
+
+    // みかた（かくど／ながさ）の切り替え
+    function setMode(m) {
+        mode = m;
+        document.querySelectorAll('#modeSeg button').forEach((x) => x.classList.toggle('active', x.dataset.mode === m));
+        show(radNote, m === 'rad', 'block');
+        buildPresets();
+        updateValues();
+    }
+    document.querySelectorAll('#modeSeg button').forEach((b) => {
+        b.addEventListener('click', () => setMode(b.dataset.mode));
+    });
+
+    // ===== 2D：円と波を、指（マウス）でなぞって動かす =====
+    function clampDeg(v) { return Math.max(0, Math.min(MAX_DEG, v)); }
+
+    function pointerInContainer(e) {
+        const rect = container.getBoundingClientRect();
+        return { x: e.clientX - rect.left - container.clientLeft, y: e.clientY - rect.top - container.clientTop };
+    }
+    function circlePhi(e) {
+        const p = pointerInContainer(e);
+        return Math.atan2(circleGeom.cy - p.y, p.x - circleGeom.cx);
+    }
+
+    // 円：前回との角度の差を足していくので、4周ぶん連続で回せる（2Dとクイズで共通）
+    let cDragging = false;
+    let cPrevPhi = 0;
+    circleTouch.addEventListener('pointerdown', (e) => {
+        if (currentTab === '2d') { setPlaying(false); degF = deg; }
+        cDragging = true;
+        cPrevPhi = circlePhi(e);
+        circleTouch.setPointerCapture(e.pointerId);
+        e.preventDefault();
+    });
+    circleTouch.addEventListener('pointermove', (e) => {
+        if (!cDragging) return;
+        const phi = circlePhi(e);
+        let d = phi - cPrevPhi;
+        while (d > Math.PI) d -= 2 * Math.PI;
+        while (d < -Math.PI) d += 2 * Math.PI;
+        cPrevPhi = phi;
+        if (currentTab === 'quiz') {
+            qDegF = clampDeg(qDegF + d * 180 / Math.PI);
+            const nd = Math.round(qDegF);
+            if (nd !== qDeg) { qDeg = nd; draw(); }
+        } else {
+            degF = clampDeg(degF + d * 180 / Math.PI);
+            const nd = Math.round(degF);
+            if (nd !== deg) { deg = nd; slider.value = nd; updateValues(); }
+        }
+    });
+    const cEnd = () => {
+        if (!cDragging) return;
+        cDragging = false;
+        if (currentTab === '2d') {
+            const t = snapDeg(deg);
+            if (t !== deg) setAngle(t);
+        }
+    };
+    circleTouch.addEventListener('pointerup', cEnd);
+    circleTouch.addEventListener('pointercancel', () => { cDragging = false; });
+
+    // 波：横になぞった位置がそのまま θ。たて方向のスクロールは邪魔しない
+    let wDown = false, wActive = false, wStartX = 0, wStartY = 0;
+    function waveAngle(e) {
+        const p = pointerInContainer(e);
+        return clampDeg(Math.round((p.x - waveGeom.gx) / waveGeom.gw * MAX_DEG));
+    }
+    waveTouch.addEventListener('pointerdown', (e) => {
+        setPlaying(false);
+        wDown = true; wActive = false;
+        wStartX = e.clientX; wStartY = e.clientY;
+        waveTouch.setPointerCapture(e.pointerId);
+    });
+    waveTouch.addEventListener('pointermove', (e) => {
+        if (!wDown) return;
+        if (!wActive) {
+            const dx = Math.abs(e.clientX - wStartX), dy = Math.abs(e.clientY - wStartY);
+            if (dx > 6 && dx > dy) wActive = true; else return;
+        }
+        const a = waveAngle(e);
+        if (a !== deg) setAngle(a);
+    });
+    waveTouch.addEventListener('pointerup', (e) => {
+        if (!wDown) return;
+        wDown = false;
+        if (!wActive) setAngle(waveAngle(e));        // ちょんと さわった位置へ
+        const t = snapDeg(deg);
+        if (t !== deg) setAngle(t);
+        wActive = false;
+    });
+    waveTouch.addEventListener('pointercancel', () => { wDown = false; wActive = false; });
+
+    // =====================================================================
+    //  クイズ
+    // =====================================================================
+    const TOL = 5;   // 正解とみなす角度のはば（±度）
+
+    // 「residues」は、360°ごとにくり返す答えの角度。4周ぶん(0〜1440°)に広げて使う
+    function targetsFor(residues, minAngle) {
+        const list = [];
+        for (let k = 0; k <= 4; k++) {
+            for (const r of residues) {
+                const a = 360 * k + r;
+                if (a <= MAX_DEG && a >= minAngle) list.push(a);
+            }
+        }
+        return list;
+    }
+
+    const RB_TAKA = '<ruby>高<rt>たか</rt></ruby>さ';
+    const RB_HAN  = '<ruby>半径<rt>はんけい</rt></ruby>';
+
+    const QUESTIONS = [
+        { key: 'max', curve: 'sin', residues: [90],
+          q: `${RB_TAKA}が いちばん たかくなる ところまで、まわしてみよう。`,
+          hint: 'Pが いちばん うえに きたときだよ。',
+          ok: `せいかい！ このとき ${RB_TAKA}は ちょうど 1。${RB_HAN}と おなじだね。` },
+        { key: 'zero', curve: 'sin', residues: [0, 180],
+          q: `${RB_TAKA}が 0に なる ところまで まわしてみよう。（Oと おなじ たかさだよ）`,
+          hint: 'Pが Oと おなじ たかさ、つまり よこの せんの うえに のったときだよ。',
+          ok: `せいかい！ ${RB_TAKA}が 0のとき、Pは Oと おなじ たかさに いるね。` },
+        { key: 'min', curve: 'sin', residues: [270],
+          q: `${RB_TAKA}が いちばん ひくくなる ところまで まわしてみよう。`,
+          hint: 'Pが いちばん したに きたときだよ。',
+          ok: 'せいかい！ Oより ひくい ところの、いちばん したまで きたね。' },
+        { key: 'cos0', curve: 'cos', residues: [90, 270],
+          q: '「よこの ながさ」が 0に なる ところまで まわしてみよう。',
+          hint: 'Pが まっすぐ うえか、まっすぐ したに きたときだよ。',
+          ok: 'せいかい！ Pが まっすぐ うえか したに いるから、よこには ぜんぜん ずれていないね。' },
+        { key: 'half', curve: 'sin', residues: [30, 150], guide: 0.5,
+          q: `${RB_TAKA}が ちょうど はんぶん（0.5）に なる ところまで まわしてみよう。`,
+          hint: `オレンジの てんせんの たかさに Pが きたときだよ。${RB_HAN}が 1だから、はんぶんは 0.5。`,
+          ok: `せいかい！ ${RB_HAN} 1の はんぶん、0.5の たかさだね。ほかにも あるかな？` },
+        { key: 'zeroAgain', curve: 'sin', residues: [0, 180], minAngle: 360, excludeFlags: true,
+          q: `${RB_TAKA}が 0に なる ところは、ほかにも あるよ。もう ひとまわり して さがしてみよう。`,
+          hint: `もう ひとまわり まわすと、また ${RB_TAKA}が 0に なるよ。`,
+          ok: 'せいかい！ 2しゅうめも おなじ かたち。なみは くりかえすんだよ。' },
+        { key: 'all', curve: 'sin', residues: [0, 180], multi: true,
+          q: `${RB_TAKA}が 0に なる ところを ぜんぶ みつけよう。ぜんぶで 9こ あるよ。`,
+          hint: `180どずつ すすむたびに、また ${RB_TAKA}が 0に なるよ。いちばん はじめの 0も わすれずに！`,
+          ok: `ぜんぶ みつけた！ すごい！ ${RB_TAKA}が 0に なる ところは 9こ あったね。` }
+    ];
+    QUESTIONS.forEach((q) => { q.targets = targetsFor(q.residues, q.minAngle || 0); });
+
+    const QUIZ_START_DEG = 45;
+    const quiz = {
+        started: false,
+        idx: 0,
+        solved: false,
+        wrong: 0,
+        found: new Set(),
+        flags: [],
+        guide: null,
+        cleared: [false, false, false, false, false, false, false],
+        solvedAt: {}
+    };
+
+    const quizStars = document.getElementById('quizStars');
+    const quizQuestion = document.getElementById('quizQuestion');
+    const quizMsg = document.getElementById('quizMsg');
+    const quizHereBtn = document.getElementById('quizHereBtn');
+    const quizHintBtn = document.getElementById('quizHintBtn');
+    const quizNextBtn = document.getElementById('quizNextBtn');
+
+    function renderStars() {
+        let html = '';
+        for (let i = 0; i < 7; i++) {
+            if (i === 6) html += '<span class="text-sm text-slate-500 mx-2" style="vertical-align:middle;">おまけ</span>';
+            const on = quiz.cleared[i];
+            html += `<span style="color:${on ? '#f59e0b' : '#cbd5e1'}">${on ? '★' : '☆'}</span>`;
+        }
+        quizStars.innerHTML = html;
+    }
+
+    function setMsg(html, kind) {
+        const colors = { ok: '#15803d', ng: '#c2410c', hint: '#475569' };
+        quizMsg.style.color = colors[kind] || '#475569';
+        quizMsg.innerHTML = html || '';
+    }
+
+    function updateQuizButtons() {
+        const last = quiz.idx === QUESTIONS.length - 1;
+        quizHereBtn.disabled = quiz.solved;
+        quizHintBtn.disabled = quiz.solved;
+        show(quizNextBtn, quiz.solved, 'inline-block');
+        quizNextBtn.textContent = last ? 'もういちど' : 'つぎへ';
+        quizHintBtn.classList.toggle('glow', !quiz.solved && quiz.wrong >= 3);
+    }
+
+    function startQuestion(i) {
+        quiz.idx = i;
+        quiz.solved = false;
+        quiz.wrong = 0;
+        quiz.found = new Set();
+        quiz.flags = [];
+        const q = QUESTIONS[i];
+        quiz.guide = (q.guide !== undefined) ? q.guide : null;
+        // 「ほかにも」の問題では、さっき見つけた場所の旗を立てておく
+        if (q.key === 'zeroAgain' && quiz.solvedAt.zero !== undefined) {
+            quiz.flags.push({ deg: quiz.solvedAt.zero, curve: 'sin' });
+        }
+        qDeg = QUIZ_START_DEG;
+        qDegF = QUIZ_START_DEG;
+        const label = i < 6 ? `もんだい ${i + 1}` : 'おまけ';
+        quizQuestion.innerHTML = `<span class="text-slate-400 mr-3 text-xl">${label}</span>${q.q}`;
+        setMsg('', '');
+        renderStars();
+        updateQuizButtons();
+        draw();
+    }
+
+    function restartQuiz() {
+        quiz.cleared = [false, false, false, false, false, false, false];
+        quiz.solvedAt = {};
+        startQuestion(0);
+    }
+
+    // 正解にできる角度を探す（はばは ±TOL）
+    function validTargets(q) {
+        return q.targets.filter((t) => {
+            if (q.excludeFlags && quiz.flags.some((f) => Math.abs(f.deg - t) <= 10)) return false;
+            return true;
+        });
+    }
+    function matchTarget(q, a) {
+        let best = null, bd = 1e9;
+        for (const t of validTargets(q)) {
+            const d = Math.abs(a - t);
+            if (d <= TOL && d < bd) { best = t; bd = d; }
+        }
+        return best;
+    }
+    function nearestTarget(q, a) {
+        let best = null, bd = 1e9;
+        for (const t of validTargets(q)) {
+            if (q.multi && quiz.found.has(t)) continue;
+            const d = Math.abs(a - t);
+            if (d < bd) { best = t; bd = d; }
+        }
+        return best;
+    }
+
+    function snapTo(t) { qDeg = t; qDegF = t; }
+
+    function solveQuestion(q) {
+        quiz.solved = true;
+        quiz.cleared[quiz.idx] = true;
+        setMsg(q.ok, 'ok');
+        renderStars();
+        updateQuizButtons();
+    }
+
+    function wrongMessage(q, a) {
+        quiz.wrong++;
+        let msg = 'ちがうよ。もういちど ためしてみよう。';
+        const nt = nearestTarget(q, a);
+        if (nt !== null) {
+            const diff = nt - a;
+            if (Math.abs(diff) <= 30) {
+                msg = 'おしい！ もうすこし ' + (diff > 0 ? 'ひだりまわり（とけいと ぎゃくむき）' : 'とけいまわり') + ' に まわしてみよう。';
+            }
+        }
+        if (quiz.wrong >= 3) msg += '<br>むずかしいときは「ヒント」を おしてみてね。';
+        setMsg(msg, 'ng');
+        updateQuizButtons();
+    }
+
+    function quizHere() {
+        if (quiz.solved) return;
+        const q = QUESTIONS[quiz.idx];
+        const a = qDeg;
+        const t = matchTarget(q, a);
+        if (t === null) { wrongMessage(q, a); return; }
+
+        if (q.multi) {
+            if (quiz.found.has(t)) { setMsg('そこは もう みつけたよ。ほかの ところを さがそう。', 'hint'); return; }
+            quiz.found.add(t);
+            quiz.flags.push({ deg: t, curve: q.curve });
+            snapTo(t);
+            const rest = q.targets.length - quiz.found.size;
+            if (rest === 0) solveQuestion(q);
+            else setMsg(`みつけた！ あと ${rest}こ！`, 'ok');
+        } else {
+            quiz.flags.push({ deg: t, curve: q.curve });
+            quiz.solvedAt[q.key] = t;
+            snapTo(t);
+            solveQuestion(q);
+        }
+        draw();
+    }
+
+    quizHereBtn.addEventListener('click', quizHere);
+    quizHintBtn.addEventListener('click', () => {
+        setMsg('ヒント：' + QUESTIONS[quiz.idx].hint, 'hint');
+        quizHintBtn.classList.remove('glow');
+    });
+    quizNextBtn.addEventListener('click', () => {
+        if (quiz.idx >= QUESTIONS.length - 1) restartQuiz();
+        else startQuestion(quiz.idx + 1);
+    });
+
+    // ===== 初期化 =====
+    window.addEventListener('resize', resizeCanvas);
+    if (typeof ResizeObserver !== 'undefined') {
+        new ResizeObserver(resizeCanvas).observe(container);
+    }
+    function init() { buildPresets(); resizeCanvas(); updateValues(); }
+    // KaTeX(defer)の読み込み完了後に初期化する
+    if (document.readyState === 'complete') init();
+    else window.addEventListener('load', init);
+</script>
+</body>
+</html>
